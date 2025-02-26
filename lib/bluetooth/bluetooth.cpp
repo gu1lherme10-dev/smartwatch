@@ -2,6 +2,7 @@
 #include <ArduinoBLE.h>
 #include <battery.h>
 
+// Definição do serviço e características do BLE
 BLEService batteryService("0x180F");
 BLEIntCharacteristic readBatteryLevel("0x2A19", BLERead);
 BLEIntCharacteristic readBatteryStatus("0x2BED", BLERead);
@@ -10,6 +11,7 @@ BLEByteCharacteristic notifyLowLevelBattery("0x2BE9", BLENotify);
 // Variáveis de controle
 bool isCentralConnected = false;
 
+// Funções de callback para conexão e desconexão do BLE
 void blePeripheralConnectHandler(BLEDevice central)
 {
     isCentralConnected = true;
@@ -22,10 +24,10 @@ void blePeripheralDisconnectHandler(BLEDevice central)
     isCentralConnected = false;
     Serial.print("Desconectado, central: ");
     Serial.println(central.address());
-    BLE.advertise();
+    BLE.advertise();  // Recomeça a propagação para novos dispositivos se conectarem
 }
 
-
+// Função para atualizar o nível de carga da bateria no BLE
 void updateBatteryLevelCharacteristic(BLEDevice central, BLECharacteristic characteristic)
 {
     int batteryLevel = getBatteryPercentage();
@@ -37,6 +39,7 @@ void updateBatteryLevelCharacteristic(BLEDevice central, BLECharacteristic chara
     }
 }
 
+// Função para atualizar o status da bateria no BLE
 void updateBatteryStatusCharacteristic(BLEDevice central, BLECharacteristic characteristic)
 {
     int batteryStatus = getBatteryStatus();
@@ -44,22 +47,24 @@ void updateBatteryStatusCharacteristic(BLEDevice central, BLECharacteristic char
     Serial.println(batteryStatus);
     if (isCentralConnected)
     {
-        readBatteryStatus.writeValue(batteryStatus);
+        readBatteryStatus.writeValue(batteryStatus);  // Atualiza o status da bateria
     }
 }
 
+// Função chamada para notificar que a bateria está em nível baixo
 void notifyBatteryLowLevel()
 {
     int batteryPercentage = getBatteryPercentage();
-    Serial.print("Nível baixo de bateria: ");
+    Serial.print("Verificando nível baixo de bateria: ");
     Serial.println(batteryPercentage);
-    if (isCentralConnected && batteryPercentage < 20)
+    if (isCentralConnected && batteryPercentage < 20)  // Notifica apenas se a bateria estiver baixa
     {
         Serial.println("Notificando nível baixo de bateria.");
-        notifyLowLevelBattery.writeValue(1);
+        notifyLowLevelBattery.writeValue(1);  // Envia o valor de notificação
     }
 }
 
+// Função para configurar o Bluetooth
 void setupBluetooth()
 {
     Serial.println("Inicializando Bluetooth...");
@@ -92,5 +97,5 @@ void setupBluetooth()
 
 void loopPollingBluetooth()
 {
-    BLE.poll(); 
+    BLE.poll();  // Polling para o BLE
 }
