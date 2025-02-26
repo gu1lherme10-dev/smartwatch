@@ -8,11 +8,9 @@ StepCounter::StepCounter(TTGOClass *watch) {
     this->sensor = watch->bma;
 }
 
-// Inicializa o sensor e configura o contador de passos
 void StepCounter::begin() {
     sensor->begin();
 
-    // Configuração do acelerômetro
     Acfg cfg;
     cfg.odr = BMA4_OUTPUT_DATA_RATE_100HZ;
     cfg.range = BMA4_ACCEL_RANGE_2G;
@@ -35,7 +33,6 @@ void IRAM_ATTR StepCounter::onInterrupt() {
     irq = true;
 }
 
-// Verifica se um novo passo foi detectado
 bool StepCounter::checkStep() {
     if (irq) {
         irq = false;
@@ -45,7 +42,6 @@ bool StepCounter::checkStep() {
     return false;
 }
 
-// Retorna a contagem de passos
 uint32_t StepCounter::getStepCount() {
     return sensor->getCounter();
 }
