@@ -28,8 +28,5 @@ void loop() {
     //     Serial.printf("Passos: %d\n", stepCount);
     // }
 
-    if(isBateryLowLevel()){
-        notifyBatteryLowLevel();
-    }
     delay(20);
 }
