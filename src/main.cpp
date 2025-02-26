@@ -14,7 +14,6 @@ void setup() {
     watch->begin();
     watch->openBL();
 
-    // Inicializa a biblioteca do contador de passos
     // stepCounter = new StepCounter(watch);
     // stepCounter->begin();
 }
