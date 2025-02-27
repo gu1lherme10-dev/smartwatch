@@ -3,95 +3,84 @@
 #include <config.h>
 #include <utils.h>
 
-// Private variables
-AXP20X_Class power; 
+// Variáveis privadas
+volatile AXP20X_Class *power;
 unsigned long startMillisBattery;
 unsigned long currentMillisBattery;
-const unsigned long period = 2000;  
-float batteryAverageVoltage = 0.00;
+const unsigned long period = 2000;
+volatile float batteryAverageVoltage = 0.00;
 
-void setupBatteryMonitor()
-{
+// Construtor
+BatteryMonitor::BatteryMonitor(TTGOClass *watch) {
+    this->watch = watch;
+    this->power = watch->power;
+}
+
+// Inicia o monitoramento da bateria
+void BatteryMonitor::begin() {
     Wire.begin();
-    power.begin(); 
 
-    if (!power.begin()) 
-    {
+    if (!power) {
         Serial.println("Falha ao inicializar o AXP202!");
-        while (1); 
+        while (1);  // Trava o sistema caso haja falha
     }
 
-    power.setPowerOutPut(AXP202_LDO2, AXP202_ON); 
-    power.setLDO2Voltage(3300);
-    power.setChgLEDMode(AXP20X_LED_LOW_LEVEL);
-    
+    power->setPowerOutPut(AXP202_LDO2, AXP202_ON);
+    power->setLDO2Voltage(3300);
+    power->setChgLEDMode(AXP20X_LED_LOW_LEVEL);
 
-   
-    initializeMovingAverage(10);  
-    startMillisBattery = millis();  
+    initializeMovingAverage(10);  // Inicializa o filtro de média móvel
+    startMillisBattery = millis();  // Marca o tempo de início
+
+    Serial.println("Monitoramento de bateria iniciado!");
 }
 
-void calculateBatteryVoltage()
-{
-    
-    float batteryVoltage = power.getBattVoltage();
-    batteryAverageVoltage = movingMediaFilter(batteryVoltage);  
+// Calcula a voltagem da bateria
+void BatteryMonitor::calculateBatteryVoltage() {
+    float batteryVoltage = power->getBattVoltage();
+    batteryAverageVoltage = movingMediaFilter(batteryVoltage);  // Atualiza a média móvel
 }
 
-int getBatteryPercentage()
-{
-    if (isChargingBattery())  
-    {
-        float batRef = 4.2;  
-        return map(batteryAverageVoltage, 3.0, batRef, 0, 100);  
+// Retorna a porcentagem da bateria
+int BatteryMonitor::getBatteryPercentage() {
+    if (isChargingBattery()) {
+        float batRef = 4.2;  // Valor de referência para a carga total da bateria
+        return map(batteryAverageVoltage, 3.0, batRef, 0, 100);
     }
-    else
-    {
-        return -1; 
-    }
+    return -1;  // Se não estiver carregando, retorna erro
 }
 
-int getBatteryStatus()
-{
-    if (!isChargingBattery()) 
-    {
+// Retorna o status da bateria
+int BatteryMonitor::getBatteryStatus() {
+    if (!isChargingBattery()) {
         return 0;  // Bateria não conectada
-    }
-    else if (getBatteryPercentage() >= 0 && getBatteryPercentage() < 20)
-    {
+    } else if (getBatteryPercentage() >= 0 && getBatteryPercentage() < 20) {
         return 1;  // Bateria muito baixa
-    }
-    else if (getBatteryPercentage() >= 20 && getBatteryPercentage() < 50)
-    {
+    } else if (getBatteryPercentage() >= 20 && getBatteryPercentage() < 50) {
         return 2;  // Bateria média
-    }
-    else if (getBatteryPercentage() >= 50 && getBatteryPercentage() < 95)
-    {
+    } else if (getBatteryPercentage() >= 50 && getBatteryPercentage() < 95) {
         return 3;  // Bateria boa
-    }
-    else if (getBatteryPercentage() > 95)
-    {
-        return 4;
+    } else if (getBatteryPercentage() > 95) {
+        return 4;  // Bateria cheia
     }
     return -1;  // Caso de erro
 }
 
-bool isChargingBattery()
-{
-    return power.isChargeing();
+// Verifica se a bateria está carregando
+bool BatteryMonitor::isChargingBattery() {
+    return power->isChargeing();
 }
 
-void loopMonitoringBattery()
-{
+// Função de loop para monitorar a bateria
+void BatteryMonitor::loopMonitoringBattery() {
     currentMillisBattery = millis();
-    if (currentMillisBattery - startMillisBattery >= period)
-    {
-        calculateBatteryVoltage(); 
-        startMillisBattery = currentMillisBattery; 
+    if (currentMillisBattery - startMillisBattery >= period) {
+        calculateBatteryVoltage();  // Atualiza a voltagem da bateria
+        startMillisBattery = currentMillisBattery;  // Reseta o contador
     }
 }
 
-bool isBateryLowLevel()
-{
+// Verifica se a bateria está com nível baixo
+bool BatteryMonitor::isBatteryLowLevel() {
     return getBatteryPercentage() < 20;
 }

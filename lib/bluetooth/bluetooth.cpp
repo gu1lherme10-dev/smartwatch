@@ -1,71 +1,18 @@
-#include "bluetooth.h"
 #include <ArduinoBLE.h>
 #include <battery.h>
+#include "bluetooth.h"
 
-// Definição do serviço e características do BLE
-BLEService batteryService("0x180F");
-BLEIntCharacteristic readBatteryLevel("0x2A19", BLERead);
-BLEIntCharacteristic readBatteryStatus("0x2BED", BLERead);
-BLEByteCharacteristic notifyLowLevelBattery("0x2BE9", BLENotify);
-
-// Variáveis de controle
-bool isCentralConnected = false;
-
-// Funções de callback para conexão e desconexão do BLE
-void blePeripheralConnectHandler(BLEDevice central)
-{
-    isCentralConnected = true;
-    Serial.print("Conectado, central: ");
-    Serial.println(central.address());
+Bluetooth::Bluetooth(BatteryMonitor *batteryMonitor)
+    : batteryService("0x180F"),
+      readBatteryLevel("0x2A19", BLERead),  
+      readBatteryStatus("0x2BED", BLERead),
+      notifyLowLevelBattery("0x2BE9", BLENotify), 
+      isCentralConnected(false), 
+      batteryMonitor(batteryMonitor) {
 }
 
-void blePeripheralDisconnectHandler(BLEDevice central)
-{
-    isCentralConnected = false;
-    Serial.print("Desconectado, central: ");
-    Serial.println(central.address());
-    BLE.advertise();  // Recomeça a propagação para novos dispositivos se conectarem
-}
-
-// Função para atualizar o nível de carga da bateria no BLE
-void updateBatteryLevelCharacteristic(BLEDevice central, BLECharacteristic characteristic)
-{
-    int batteryLevel = getBatteryPercentage();
-    Serial.print("Atualizando nível de bateria: ");
-    Serial.println(batteryLevel);
-    if (isCentralConnected)
-    {
-        readBatteryLevel.writeValue(batteryLevel);
-    }
-}
-
-// Função para atualizar o status da bateria no BLE
-void updateBatteryStatusCharacteristic(BLEDevice central, BLECharacteristic characteristic)
-{
-    int batteryStatus = getBatteryStatus();
-    Serial.print("Atualizando status da bateria: ");
-    Serial.println(batteryStatus);
-    if (isCentralConnected)
-    {
-        readBatteryStatus.writeValue(batteryStatus);  // Atualiza o status da bateria
-    }
-}
-
-// Função chamada para notificar que a bateria está em nível baixo
-void notifyBatteryLowLevel()
-{
-    int batteryPercentage = getBatteryPercentage();
-    Serial.print("Verificando nível baixo de bateria: ");
-    Serial.println(batteryPercentage);
-    if (isCentralConnected && batteryPercentage < 20)  // Notifica apenas se a bateria estiver baixa
-    {
-        Serial.println("Notificando nível baixo de bateria.");
-        notifyLowLevelBattery.writeValue(1);  // Envia o valor de notificação
-    }
-}
-
-// Função para configurar o Bluetooth
-void setupBluetooth()
+// Inicializa o Bluetooth
+void Bluetooth::begin()
 {
     Serial.println("Inicializando Bluetooth...");
     if (!BLE.begin())
@@ -81,21 +28,58 @@ void setupBluetooth()
     batteryService.addCharacteristic(readBatteryStatus);
     BLE.addService(batteryService);
 
-    BLE.setEventHandler(BLEConnected, blePeripheralConnectHandler);
-    BLE.setEventHandler(BLEDisconnected, blePeripheralDisconnectHandler);
+    BLE.setEventHandler(BLEConnected, [](BLEDevice central)
+                        {
+            Serial.print("Conectado, central: ");
+            Serial.println(central.address()); });
+
+    BLE.setEventHandler(BLEDisconnected, [](BLEDevice central)
+                        {
+            Serial.print("Desconectado, central: ");
+            Serial.println(central.address());
+            BLE.advertise(); });
 
     readBatteryLevel.setValue(-1);
     readBatteryStatus.setValue(-1);
     notifyLowLevelBattery.setValue(0);
 
-    readBatteryLevel.setEventHandler(BLERead, updateBatteryLevelCharacteristic);
-    readBatteryStatus.setEventHandler(BLERead, updateBatteryStatusCharacteristic);
-
     BLE.advertise();
     Serial.println("Configuração BLE concluída.");
 }
 
-void loopPollingBluetooth()
+// Atualiza o nível de bateria
+void Bluetooth::updateBatteryLevel()
 {
-    BLE.poll();  // Polling para o BLE
+    int batteryLevel = batteryMonitor->getBatteryPercentage();
+    Serial.print("Atualizando nível de bateria: ");
+    Serial.println(batteryLevel);
+    readBatteryLevel.writeValue(batteryLevel);
+}
+
+// Atualiza o status da bateria
+void Bluetooth::updateBatteryStatus()
+{
+    int batteryStatus = batteryMonitor->getBatteryStatus();
+    Serial.print("Atualizando status da bateria: ");
+    Serial.println(batteryStatus);
+    readBatteryStatus.writeValue(batteryStatus);
+}
+
+// Notifica nível baixo de bateria
+void Bluetooth::notifyBatteryLowLevel()
+{
+    int batteryPercentage = batteryMonitor->getBatteryPercentage();
+    Serial.print("Verificando nível baixo de bateria: ");
+    Serial.println(batteryPercentage);
+    if (batteryPercentage < 20)
+    {
+        Serial.println("Notificando nível baixo de bateria.");
+        notifyLowLevelBattery.writeValue(1);
+    }
+}
+
+// Polling do BLE
+void Bluetooth::loop()
+{
+    BLE.poll();
 }

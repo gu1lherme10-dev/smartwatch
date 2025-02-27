@@ -5,27 +5,32 @@
 
 TTGOClass *watch;
 StepCounter *stepCounter;
+BatteryMonitor *batteryMonitor;
+Bluetooth *bluetooth;
 
 void setup() {
     Serial.begin(115200);
-    setupBluetooth();
-    //setupBatteryMonitor();
     watch = TTGOClass::getWatch();
     watch->begin();
     watch->openBL();
 
-    // stepCounter = new StepCounter(watch);
-    // stepCounter->begin();
+    batteryMonitor = new BatteryMonitor(watch);
+    bluetooth = new Bluetooth(batteryMonitor);
+    stepCounter = new StepCounter(watch);
+
+    batteryMonitor->begin();
+    stepCounter->begin();
+    bluetooth->begin();
 }
 
 void loop() {
-	//loopMonitoringBattery();
-	loopPollingBluetooth();
+	batteryMonitor->loopMonitoringBattery();
+	bluetooth->loop();
 
-    // if (stepCounter->checkStep()) {
-    //     uint32_t stepCount = stepCounter->getStepCount();
-    //     Serial.printf("Passos: %d\n", stepCount);
-    // }
+    if (stepCounter->checkStep()) {
+        uint32_t stepCount = stepCounter->getStepCount();
+        Serial.printf("Passos: %d\n", stepCount);
+    }
 
     delay(20);
 }
