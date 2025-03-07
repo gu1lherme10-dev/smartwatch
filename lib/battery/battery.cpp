@@ -72,7 +72,7 @@ bool BatteryMonitor::isChargingBattery() {
 }
 
 // Função de loop para monitorar a bateria
-void BatteryMonitor::loopMonitoringBattery() {
+void BatteryMonitor::loop() {
     currentMillisBattery = millis();
     if (currentMillisBattery - startMillisBattery >= period) {
         calculateBatteryVoltage();  // Atualiza a voltagem da bateria

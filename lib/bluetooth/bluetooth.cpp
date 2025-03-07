@@ -11,7 +11,6 @@ Bluetooth::Bluetooth(BatteryMonitor *batteryMonitor)
       batteryMonitor(batteryMonitor) {
 }
 
-// Inicializa o Bluetooth
 void Bluetooth::begin()
 {
     Serial.println("Inicializando Bluetooth...");

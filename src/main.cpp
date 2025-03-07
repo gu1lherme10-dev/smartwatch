@@ -24,7 +24,7 @@ void setup() {
 }
 
 void loop() {
-	batteryMonitor->loopMonitoringBattery();
+	batteryMonitor->loop();
 	bluetooth->loop();
 
     if (stepCounter->checkStep()) {

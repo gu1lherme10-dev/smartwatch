@@ -34,7 +34,7 @@ public:
     bool isChargingBattery();
 
     // Função para monitorar a bateria no loop
-    void loopMonitoringBattery();
+    void loop();
 
     // Verifica se a bateria está com nível baixo (abaixo de 20%)
     bool isBatteryLowLevel();
