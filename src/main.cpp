@@ -1,36 +1,32 @@
-#include "config.h"
-#include "StepCounter.h"
 #include "bluetooth.h"
 #include "battery.h"
 
-TTGOClass *watch;
-StepCounter *stepCounter;
-BatteryMonitor *batteryMonitor;
-Bluetooth *bluetooth;
+// Instâncias globais
+BatteryMonitor batteryMonitor;
+Bluetooth bluetooth(&batteryMonitor);
+
+// Variáveis de controle de tempo
+unsigned long lastBatteryCheck = 0;
+const unsigned long batteryCheckInterval = 10000; // 10 segundos
 
 void setup() {
     Serial.begin(115200);
-    watch = TTGOClass::getWatch();
-    watch->begin();
-    watch->openBL();
-
-    batteryMonitor = new BatteryMonitor(watch);
-    bluetooth = new Bluetooth(batteryMonitor);
-    stepCounter = new StepCounter(watch);
-
-    batteryMonitor->begin();
-    stepCounter->begin();
-    bluetooth->begin();
+    
+    batteryMonitor.begin();
+    bluetooth.begin();
 }
 
 void loop() {
-	batteryMonitor->loop();
-	bluetooth->loop();
+    batteryMonitor.loop();
+    bluetooth.loop();
 
-    if (stepCounter->checkStep()) {
-        uint32_t stepCount = stepCounter->getStepCount();
-        Serial.printf("Passos: %d\n", stepCount);
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastBatteryCheck >= batteryCheckInterval) {
+        lastBatteryCheck = currentMillis;
+
+        if (batteryMonitor.isBatteryLowLevel()) {
+            Serial.println("Battery low level");
+            bluetooth.notifyBatteryLowLevel();
+        }
     }
-
-    delay(20);
 }

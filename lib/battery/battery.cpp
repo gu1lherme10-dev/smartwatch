@@ -1,86 +1,103 @@
 #include "battery.h"
-#include <Wire.h>
-#include <config.h>
+#include <Arduino.h>
 #include <utils.h>
+#include <bluetooth.h>
+
+// Definições de pinos para ESP32
+#define PIN_BATTERY_STATUS  17  // Ajuste conforme o hardware
+#define PIN_BATTERY_VOLTAGE 32
+#define PIN_CHARGE_CURRENT  13
+#define PIN_ENABLE_BATTERY  14
+#define PIN_VBAT            35  // Pino ADC para leitura da bateria
 
 // Variáveis privadas
-volatile AXP20X_Class *power;
 unsigned long startMillisBattery;
 unsigned long currentMillisBattery;
 const unsigned long period = 2000;
 volatile float batteryAverageVoltage = 0.00;
 
 // Construtor
-BatteryMonitor::BatteryMonitor(TTGOClass *watch) {
-    this->watch = watch;
-    this->power = watch->power;
-}
+BatteryMonitor::BatteryMonitor() {}
 
 // Inicia o monitoramento da bateria
 void BatteryMonitor::begin() {
-    Wire.begin();
+    pinMode(PIN_BATTERY_STATUS, INPUT);
+    pinMode(PIN_BATTERY_VOLTAGE, INPUT);
+    pinMode(PIN_CHARGE_CURRENT, OUTPUT);
+    pinMode(PIN_ENABLE_BATTERY, OUTPUT);
+    digitalWrite(PIN_CHARGE_CURRENT, LOW);
+    digitalWrite(PIN_ENABLE_BATTERY, LOW);
 
-    if (!power) {
-        Serial.println("Falha ao inicializar o AXP202!");
-        while (1);  // Trava o sistema caso haja falha
-    }
+    analogReadResolution(12);
 
-    power->setPowerOutPut(AXP202_LDO2, AXP202_ON);
-    power->setLDO2Voltage(3300);
-    power->setChgLEDMode(AXP20X_LED_LOW_LEVEL);
-
-    initializeMovingAverage(10);  // Inicializa o filtro de média móvel
-    startMillisBattery = millis();  // Marca o tempo de início
+    initializeMovingAverage(10);   // Inicializa o filtro de média móvel
+    startMillisBattery = millis(); // Marca o tempo inicial
 
     Serial.println("Monitoramento de bateria iniciado!");
 }
 
 // Calcula a voltagem da bateria
 void BatteryMonitor::calculateBatteryVoltage() {
-    float batteryVoltage = power->getBattVoltage();
-    batteryAverageVoltage = movingMediaFilter(batteryVoltage);  // Atualiza a média móvel
+    static float simulatedVoltage = 0.4;
+
+    float newSample = simulatedVoltage;
+    batteryAverageVoltage = movingMediaFilter(newSample);
+
+    Serial.print("Tensão simulada: ");
+    Serial.print(simulatedVoltage);
+    Serial.println(" V");
+
+    Serial.print("Tensão média: ");
+    Serial.print(batteryAverageVoltage);
+    Serial.println(" V");
 }
 
 // Retorna a porcentagem da bateria
 int BatteryMonitor::getBatteryPercentage() {
-    if (isChargingBattery()) {
-        float batRef = 4.2;  // Valor de referência para a carga total da bateria
-        return map(batteryAverageVoltage, 3.0, batRef, 0, 100);
+    if (!isChargingBattery()) {
+        return -1; // Bateria não conectada
     }
-    return -1;  // Se não estiver carregando, retorna erro
+
+    float minVoltage = 0.0 * 1000;
+    float maxVoltage = 5.0 * 1000; 
+    int percentage = map(batteryAverageVoltage * 1000, minVoltage, maxVoltage, 0, 100);
+    Serial.println(percentage);
+    percentage = constrain(percentage, 0, 100);
+
+    return percentage;
 }
 
 // Retorna o status da bateria
 int BatteryMonitor::getBatteryStatus() {
     if (!isChargingBattery()) {
-        return 0;  // Bateria não conectada
+        return 0; // Bateria não conectada
     } else if (getBatteryPercentage() >= 0 && getBatteryPercentage() < 20) {
-        return 1;  // Bateria muito baixa
+        return 1; // Bateria muito baixa
     } else if (getBatteryPercentage() >= 20 && getBatteryPercentage() < 50) {
-        return 2;  // Bateria média
+        return 2; // Bateria média
     } else if (getBatteryPercentage() >= 50 && getBatteryPercentage() < 95) {
-        return 3;  // Bateria boa
+        return 3; // Bateria boa
     } else if (getBatteryPercentage() > 95) {
-        return 4;  // Bateria cheia
+        return 4; // Bateria cheia
     }
-    return -1;  // Caso de erro
+    return -1; // Erro
 }
 
 // Verifica se a bateria está carregando
 bool BatteryMonitor::isChargingBattery() {
-    return power->isChargeing();
+    return digitalRead(PIN_BATTERY_STATUS) == LOW;
 }
 
 // Função de loop para monitorar a bateria
 void BatteryMonitor::loop() {
     currentMillisBattery = millis();
     if (currentMillisBattery - startMillisBattery >= period) {
-        calculateBatteryVoltage();  // Atualiza a voltagem da bateria
-        startMillisBattery = currentMillisBattery;  // Reseta o contador
+        calculateBatteryVoltage();
+        startMillisBattery = currentMillisBattery;
     }
 }
 
 // Verifica se a bateria está com nível baixo
 bool BatteryMonitor::isBatteryLowLevel() {
-    return getBatteryPercentage() < 20;
+    return (getBatteryPercentage() >= 0 && getBatteryPercentage() < 20);
 }
