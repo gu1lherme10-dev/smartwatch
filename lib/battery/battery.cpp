@@ -67,7 +67,6 @@ int BatteryMonitor::getBatteryPercentage() {
     return percentage;
 }
 
-// Retorna o status da bateria
 int BatteryMonitor::getBatteryStatus() {
     if (!isChargingBattery()) {
         return 0; // Bateria não conectada
@@ -83,12 +82,10 @@ int BatteryMonitor::getBatteryStatus() {
     return -1; // Erro
 }
 
-// Verifica se a bateria está carregando
 bool BatteryMonitor::isChargingBattery() {
     return digitalRead(PIN_BATTERY_STATUS) == LOW;
 }
 
-// Função de loop para monitorar a bateria
 void BatteryMonitor::loop() {
     currentMillisBattery = millis();
     if (currentMillisBattery - startMillisBattery >= period) {
@@ -97,7 +94,6 @@ void BatteryMonitor::loop() {
     }
 }
 
-// Verifica se a bateria está com nível baixo
 bool BatteryMonitor::isBatteryLowLevel() {
     return (getBatteryPercentage() >= 0 && getBatteryPercentage() < 20);
 }
