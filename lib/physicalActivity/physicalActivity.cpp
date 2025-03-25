@@ -1,5 +1,6 @@
 #include "physicalActivity.h"
 #include <ctime>
+#include "config.h"
 
 volatile bool PhysicalActivity::irq = false;
 
@@ -15,6 +16,7 @@ PhysicalActivity::PhysicalActivity(TTGOClass *watch) {
 
 void PhysicalActivity::begin() {
     sensor->begin();
+    this-> startTime = millis();
 
     Acfg cfg;
     cfg.odr = BMA4_OUTPUT_DATA_RATE_100HZ;
@@ -52,7 +54,6 @@ uint32_t PhysicalActivity::getStepCount() {
 }
 
 uint32_t PhysicalActivity::getStepCountMock() {
-    static uint32_t startTime = millis(); // Marca o tempo inicial
     uint32_t elapsedTime = (millis() - startTime) / 60000; // Tempo decorrido em minutos
 
     if (elapsedTime < 5) {
@@ -86,7 +87,8 @@ void PhysicalActivity::updateActivity() {
 
             if (newActivity != currentActivity) {
                 currentActivity = newActivity;
-                storeActivityEvent(currentSteps, currentActivity);
+                Serial.println("Nova atividade: " + String(currentActivity));
+                //storeActivityEvent(currentSteps, currentActivity);
             }
 
             lastStepCount = currentSteps;

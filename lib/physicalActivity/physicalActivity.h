@@ -18,6 +18,7 @@ public:
     uint32_t getStepCount();
     uint32_t getStepCountMock();
     void updateActivity();
+    uint32_t startTime;
     void storeActivityEvent(uint32_t steps, uint8_t activity);
     static void IRAM_ATTR onInterrupt();
 

@@ -3,18 +3,21 @@
 #include "battery/BatteryService.h"
 #include "physicalActivity.h"
 
-BatteryMonitor batteryMonitor;
-PhysicalActivity physicalActivity(&watch);
-
-BatteryBLEService batteryService(&batteryMonitor);
-
 Bluetooth bluetooth;
 
 unsigned long lastBatteryCheck = 0;
 const unsigned long batteryCheckInterval = 10000;
+TTGOClass *watch;
+BatteryMonitor batteryMonitor(watch);
+PhysicalActivity physicalActivity(watch);
+BatteryBLEService batteryService(&batteryMonitor);
 
 void setup() {
     Serial.begin(115200);
+
+    watch = TTGOClass::getWatch();
+    watch->begin();
+    watch->openBL();
 
     batteryMonitor.begin();
     bluetooth.begin();
@@ -26,7 +29,7 @@ void loop() {
     batteryMonitor.loop();
     bluetooth.loop();
 
-    physicalActivity.updateActivity();
+    //physicalActivity.updateActivity();
 
     unsigned long currentMillis = millis();
     if (currentMillis - lastBatteryCheck >= batteryCheckInterval) {
