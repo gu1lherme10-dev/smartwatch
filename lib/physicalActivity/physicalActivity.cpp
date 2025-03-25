@@ -2,11 +2,12 @@
 #include <ctime>
 #include "config.h"
 
-volatile bool PhysicalActivity::irq = false;
+volatile bool PhysicalActivity::irq = false; // Flag da interrupção
 
-#define STEP_THRESHOLD_WALK 40  // Passos/min para caminhar
-#define STEP_THRESHOLD_RUN 140  // Passos/min para correr
+#define STEP_THRESHOLD_WALK 40  
+#define STEP_THRESHOLD_RUN 140
 Preferences preferences;
+bool simulationMode = false;  
 
 // Construtor
 PhysicalActivity::PhysicalActivity(TTGOClass *watch) {
@@ -16,8 +17,8 @@ PhysicalActivity::PhysicalActivity(TTGOClass *watch) {
 
 void PhysicalActivity::begin() {
     sensor->begin();
-    this-> startTime = millis();
 
+    // Configuração do acelerômetro
     Acfg cfg;
     cfg.odr = BMA4_OUTPUT_DATA_RATE_100HZ;
     cfg.range = BMA4_ACCEL_RANGE_2G;
@@ -37,73 +38,105 @@ void PhysicalActivity::begin() {
 
 // Handler de interrupção
 void IRAM_ATTR PhysicalActivity::onInterrupt() {
-    irq = true;
+    irq = true;  // Marca que um evento de passos ocorreu
 }
 
-bool PhysicalActivity::checkStep() {
-    if (irq) {
-        irq = false;
-        while (!sensor->readInterrupt());
-        return sensor->isStepCounter();
-    }
-    return false;
-}
-
+// Método para obter contagem de passos
 uint32_t PhysicalActivity::getStepCount() {
     return sensor->getCounter();
 }
 
-uint32_t PhysicalActivity::getStepCountMock() {
-    uint32_t elapsedTime = (millis() - startTime) / 60000; // Tempo decorrido em minutos
+uint32_t mockSteps = 0;
+uint32_t mockStartTime = 0;
+bool isRunning = false;
 
-    if (elapsedTime < 5) {
-        return random(140, 201);
-    } else {
-        // Após 5 minutos, retorna valores entre 0 e 130
-        return random(0, 131);
-    }
+void IRAM_ATTR PhysicalActivity::mockInterrupt() {
+    irq = true;
 }
+
+
+uint32_t PhysicalActivity::getStepCountMock() {
+    static uint32_t lastMockTime = 0;
+    
+    uint32_t now = millis();
+    if (now - lastMockTime < 1000) { // Atualiza a cada 1 segundo
+        return mockSteps; // Mantém o mesmo valor até o próximo ciclo
+    }
+    lastMockTime = now;
+
+    uint32_t elapsedMinutes = (millis() - mockStartTime) / 60000;
+
+    if (elapsedMinutes >= 2) { 
+        Serial.println("Mock: Alterando estado de atividade...");
+        isRunning = !isRunning;  // Alterna entre corrida/caminhada a cada 5 min
+        mockStartTime = millis();
+    }
+
+    if (isRunning) {
+        mockSteps += 10; // Corrida → 10 passos por segundo (~600 por minuto)
+    } else {
+        mockSteps += 4;  // Caminhada → 4 passos por segundo (~240 por minuto)
+    }
+
+    Serial.println("Mock: Total de passos simulados: " + String(mockSteps));
+    mockInterrupt();
+
+    return mockSteps;
+}
+
 
 // Verifica passos e atualiza estado da atividade
 void PhysicalActivity::updateActivity() {
-    if (irq) {
-        irq = false;
-        while (!sensor->readInterrupt());
-        
-        uint32_t currentSteps = getStepCountMock();
-        Serial.println("Passos: " + String(currentSteps));
-        uint32_t now = millis();
-        uint32_t elapsedTime = (now - lastUpdateTime) / 60000; // Convertendo para minutos
-        
-        if (elapsedTime > 0) {
-            uint32_t stepRate = (currentSteps - lastStepCount) / elapsedTime;
-            uint8_t newActivity = 0;
-            
-            if (stepRate >= STEP_THRESHOLD_RUN) {
-                newActivity = 2;
-            } else if (stepRate > 0) {
-                newActivity = 1;
-            }
+    if (simulationMode) {
+        irq = true; // Ativa interrupção manualmente
+    }
 
-            if (newActivity != currentActivity) {
-                currentActivity = newActivity;
-                Serial.println("Nova atividade: " + String(currentActivity));
-                //storeActivityEvent(currentSteps, currentActivity);
-            }
+    if (!irq) return; // Só atualiza se houve interrupção
 
-            lastStepCount = currentSteps;
-            lastUpdateTime = now;
+    irq = false;
+    uint32_t now = millis();
+    uint32_t elapsedTime = (now - lastUpdateTime) / 60000; // Tempo em minutos
+
+    uint32_t currentSteps = simulationMode ? getStepCountMock() : getStepCount();
+    
+    if (elapsedTime > 0) {
+        uint32_t stepRate = (currentSteps - lastStepCount) / elapsedTime;
+        uint8_t newActivity = 0;
+
+
+        if (stepRate >= STEP_THRESHOLD_RUN) {
+            newActivity = 2; // Correndo
+        } else if (stepRate > 0) {
+            newActivity = 1; // Caminhando
         }
+
+        // Registra apenas se houve mudança de estado
+        if (newActivity != currentActivity) {
+            Serial.println("Mudança de atividade detectada!");
+            Serial.println("Novo estado: " + String(newActivity));
+            Serial.println("Passos acumulados: " + String(currentSteps));
+
+            storeActivityEvent(currentSteps, newActivity);
+            currentActivity = newActivity;
+            readStoredActivity();
+        }
+
+        lastStepCount = currentSteps;
+        lastUpdateTime = now;
     }
 }
 
 String PhysicalActivity::getCurrentDateKey() {
-    time_t now = time(nullptr);
-    struct tm *timeinfo = localtime(&now);
-    
+    if (!watch || !watch->rtc) {
+        Serial.println("⚠️ Erro: RTC não está disponível! Usando millis() como fallback.");
+        return String(millis() / 1000);
+    }
+
+    RTC_Date date = watch->rtc->getDateTime();  // Obtém a data e hora do RTC
+
     char dateStr[9];
-    strftime(dateStr, sizeof(dateStr), "%Y%m%d", timeinfo);
-    
+    snprintf(dateStr, sizeof(dateStr), "%04d%02d%02d", date.year, date.month, date.day);
+
     return String(dateStr);
 }
 
@@ -122,4 +155,33 @@ void PhysicalActivity::storeActivityEvent(uint32_t steps, uint8_t activity) {
     preferences.end();
 
     Serial.println("Evento salvo na Flash para o dia: " + todayKey);
+}
+
+void PhysicalActivity::readStoredActivity() {
+    String todayKey = getCurrentDateKey();
+
+    ActivityEvent event;
+    uint8_t buffer[sizeof(ActivityEvent)];
+
+    preferences.begin("activity", true);
+    
+    size_t dataSize = preferences.getBytes(todayKey.c_str(), buffer, sizeof(ActivityEvent));
+
+    if (dataSize == sizeof(ActivityEvent)) {
+        memcpy(&event, buffer, sizeof(ActivityEvent));
+
+        uint32_t steps = event.data >> 2;
+        uint8_t activity = event.data & 0b11;
+        uint32_t timestamp = event.timestamp;
+
+        Serial.println("📦 Dados recuperados da Flash:");
+        Serial.println("📅 Data: " + todayKey);
+        Serial.println("⏰ Timestamp: " + String(timestamp));
+        Serial.println("🚶 Passos: " + String(steps));
+        Serial.println("🎭 Atividade: " + String(activity)); // 0 = parado, 1 = caminhando, 2 = correndo
+    } else {
+        Serial.println("⚠️ Nenhum dado encontrado para " + todayKey);
+    }
+
+    preferences.end();
 }

@@ -2,8 +2,7 @@
 #define CONFIG_H
 
 // Seleção de hardware
-#define LILYGO_WATCH_2019_WITH_TOUCH
-#define LILYGO_HAS_MOTOR
+#define LILYGO_WATCH_2020_V3  
 #include <LilyGoWatch.h>
 
 #endif
