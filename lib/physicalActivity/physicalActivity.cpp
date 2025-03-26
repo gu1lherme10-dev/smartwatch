@@ -1,18 +1,22 @@
 #include "physicalActivity.h"
 #include <ctime>
 #include "config.h"
+#include "utils.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 volatile bool PhysicalActivity::irq = false; // Flag da interrupção
 
 #define STEP_THRESHOLD_WALK 40  
 #define STEP_THRESHOLD_RUN 140
 Preferences preferences;
-bool simulationMode = false;  
 
 // Construtor
 PhysicalActivity::PhysicalActivity(TTGOClass *watch) {
     this->watch = watch;
     this->sensor = watch->bma;
+    this->lastStepCount = 0;
+    this->currentActivity = -1;
 }
 
 void PhysicalActivity::begin() {
@@ -46,141 +50,113 @@ uint32_t PhysicalActivity::getStepCount() {
     return sensor->getCounter();
 }
 
-uint32_t mockSteps = 0;
-uint32_t mockStartTime = 0;
-bool isRunning = false;
-
-void IRAM_ATTR PhysicalActivity::mockInterrupt() {
-    irq = true;
-}
-
-
-uint32_t PhysicalActivity::getStepCountMock() {
-    static uint32_t lastMockTime = 0;
-    
-    uint32_t now = millis();
-    if (now - lastMockTime < 1000) { // Atualiza a cada 1 segundo
-        return mockSteps; // Mantém o mesmo valor até o próximo ciclo
-    }
-    lastMockTime = now;
-
-    uint32_t elapsedMinutes = (millis() - mockStartTime) / 60000;
-
-    if (elapsedMinutes >= 2) { 
-        Serial.println("Mock: Alterando estado de atividade...");
-        isRunning = !isRunning;  // Alterna entre corrida/caminhada a cada 5 min
-        mockStartTime = millis();
-    }
-
-    if (isRunning) {
-        mockSteps += 10; // Corrida → 10 passos por segundo (~600 por minuto)
-    } else {
-        mockSteps += 4;  // Caminhada → 4 passos por segundo (~240 por minuto)
-    }
-
-    Serial.println("Mock: Total de passos simulados: " + String(mockSteps));
-    mockInterrupt();
-
-    return mockSteps;
-}
-
-
-// Verifica passos e atualiza estado da atividade
 void PhysicalActivity::updateActivity() {
-    if (simulationMode) {
-        irq = true; // Ativa interrupção manualmente
-    }
-
-    if (!irq) return; // Só atualiza se houve interrupção
-
-    irq = false;
     uint32_t now = millis();
-    uint32_t elapsedTime = (now - lastUpdateTime) / 60000; // Tempo em minutos
-
-    uint32_t currentSteps = simulationMode ? getStepCountMock() : getStepCount();
-    
-    if (elapsedTime > 0) {
-        uint32_t stepRate = (currentSteps - lastStepCount) / elapsedTime;
-        uint8_t newActivity = 0;
-
-
-        if (stepRate >= STEP_THRESHOLD_RUN) {
-            newActivity = 2; // Correndo
-        } else if (stepRate > 0) {
-            newActivity = 1; // Caminhando
-        }
-
-        // Registra apenas se houve mudança de estado
-        if (newActivity != currentActivity) {
-            Serial.println("Mudança de atividade detectada!");
-            Serial.println("Novo estado: " + String(newActivity));
-            Serial.println("Passos acumulados: " + String(currentSteps));
-
-            storeActivityEvent(currentSteps, newActivity);
-            currentActivity = newActivity;
-            readStoredActivity();
-        }
-
-        lastStepCount = currentSteps;
-        lastUpdateTime = now;
+    if (now - lastUpdateTime < 60000) return;
+    uint32_t currentSteps = getStepCount();
+    uint32_t stepDelta = currentSteps - lastStepCount;
+    uint8_t detectedActivity = detectActivity(stepDelta);
+    if (currentActivity == -1) {
+        Serial.println("Iniciando monitoramento. Atividade detectada: " + String(detectedActivity));
+        currentActivity = detectedActivity;
+    } else if (detectedActivity != currentActivity) {
+        Serial.println("Mudança de atividade: " + String(currentActivity) + " -> " + String(detectedActivity));
+        storeActivityEvent(currentSteps, currentActivity);
+        currentActivity = detectedActivity;
     }
+
+    lastStepCount = currentSteps;
+    lastUpdateTime = now;
 }
+
+uint8_t PhysicalActivity::detectActivity(uint32_t stepDelta) {
+    if (stepDelta >= STEP_THRESHOLD_RUN) return 2; // Correndo
+    if (stepDelta > 0) return 1; // Caminhando
+    return 0;
+}
+
 
 String PhysicalActivity::getCurrentDateKey() {
-    if (!watch || !watch->rtc) {
-        Serial.println("⚠️ Erro: RTC não está disponível! Usando millis() como fallback.");
-        return String(millis() / 1000);
-    }
+    RTC_Date date = watch->rtc->getDateTime();
 
-    RTC_Date date = watch->rtc->getDateTime();  // Obtém a data e hora do RTC
-
-    char dateStr[9];
-    snprintf(dateStr, sizeof(dateStr), "%04d%02d%02d", date.year, date.month, date.day);
-
-    return String(dateStr);
+    String dateKey = String(date.year) + (date.month < 10 ? "0" : "") + String(date.month) + (date.day < 10 ? "0" : "") + String(date.day);
+    return dateKey;
 }
 
 void PhysicalActivity::storeActivityEvent(uint32_t steps, uint8_t activity) {
-    String todayKey = getCurrentDateKey();
+    Serial.println("========== Salvando Evento ==========");
+
+    RTC_Date date = watch->rtc->getDateTime();
+    uint32_t timestamp = convertToUnixTimestamp(date); 
+    Serial.print("Timestamp: ");
+    Serial.println(timestamp);
 
     ActivityEvent event;
-    event.timestamp = millis();
-    event.data = (steps << 2) | activity;
+    event.timestamp = timestamp;
+    event.data = (steps << 2) | activity;  
+
+    Serial.print("Passos: ");
+    Serial.println(steps);
+
+    Serial.print("Tipo de Atividade: ");
+    Serial.println(activity);
+
+    Serial.print("Data (codificado): ");
+    Serial.println(event.data, BIN);
 
     uint8_t buffer[sizeof(ActivityEvent)];
     memcpy(buffer, &event, sizeof(ActivityEvent));
 
     preferences.begin("activity", false);
-    preferences.putBytes(todayKey.c_str(), buffer, sizeof(ActivityEvent));
-    preferences.end();
 
-    Serial.println("Evento salvo na Flash para o dia: " + todayKey);
+    String timestampKey = String(timestamp);
+    bool success = preferences.putBytes(timestampKey.c_str(), buffer, sizeof(ActivityEvent));
+    
+    preferences.end();
 }
 
-void PhysicalActivity::readStoredActivity() {
-    String todayKey = getCurrentDateKey();
-
-    ActivityEvent event;
-    uint8_t buffer[sizeof(ActivityEvent)];
-
+void PhysicalActivity::printEventsForDay(uint32_t dayTimestamp) {
     preferences.begin("activity", true);
-    
-    size_t dataSize = preferences.getBytes(todayKey.c_str(), buffer, sizeof(ActivityEvent));
 
-    if (dataSize == sizeof(ActivityEvent)) {
-        memcpy(&event, buffer, sizeof(ActivityEvent));
+    Serial.println("========== Eventos do Dia ==========");
 
-        uint32_t steps = event.data >> 2;
-        uint8_t activity = event.data & 0b11;
-        uint32_t timestamp = event.timestamp;
+    nvs_iterator_t it = nvs_entry_find("nvs", "activity", NVS_TYPE_BLOB);
+    while (it != NULL) {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        it = nvs_entry_next(it);
 
-        Serial.println("📦 Dados recuperados da Flash:");
-        Serial.println("📅 Data: " + todayKey);
-        Serial.println("⏰ Timestamp: " + String(timestamp));
-        Serial.println("🚶 Passos: " + String(steps));
-        Serial.println("🎭 Atividade: " + String(activity)); // 0 = parado, 1 = caminhando, 2 = correndo
-    } else {
-        Serial.println("⚠️ Nenhum dado encontrado para " + todayKey);
+        uint32_t timestamp = String(info.key).toInt();
+
+        if (timestamp >= dayTimestamp && timestamp < dayTimestamp + 86400) {
+            uint8_t buffer[sizeof(ActivityEvent)];
+            size_t dataSize = preferences.getBytes(info.key, buffer, sizeof(ActivityEvent));
+
+            if (dataSize == sizeof(ActivityEvent)) {
+                ActivityEvent event;
+                memcpy(&event, buffer, sizeof(ActivityEvent));
+
+                uint32_t steps = event.data >> 2;
+                uint8_t activity = event.data & 0b11;
+
+                Serial.print("Timestamp: ");
+                Serial.println(event.timestamp);
+
+                Serial.print("Passos: ");
+                Serial.println(steps);
+
+                Serial.print("Atividade: ");
+                if (activity == 0) {
+                    Serial.println("Parado");
+                } else if (activity == 1) {
+                    Serial.println("Caminhando");
+                } else if (activity == 2) {
+                    Serial.println("Correndo");
+                }
+
+                Serial.println("-----------------------------");
+            }
+        }
     }
 
     preferences.end();

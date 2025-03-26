@@ -37,9 +37,7 @@ void BatteryMonitor::begin() {
 
 
 int BatteryMonitor::getBatteryPercentage() {
-    Serial.println("Porcentagem da Bateria");
     int batteryPercentage = power->getBattPercentage();
-    Serial.println(batteryPercentage);
     return batteryPercentage;
 }
 

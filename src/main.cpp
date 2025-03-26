@@ -2,6 +2,7 @@
 #include "battery.h"
 #include "battery/BatteryService.h"
 #include "physicalActivity.h"
+#include "screenManager.h"
 
 Bluetooth bluetooth;
 
@@ -13,6 +14,7 @@ BatteryMonitor *batteryMonitor;
 PhysicalActivity *physicalActivity;
 BatteryBLEService *batteryService;
 TFT_eSPI *tft;
+ScreenManager *screenManager; 
 
 void setup() {
     Serial.begin(115200);
@@ -25,31 +27,35 @@ void setup() {
     batteryMonitor = new BatteryMonitor(watch);
     physicalActivity = new PhysicalActivity(watch);
     batteryService = new BatteryBLEService(batteryMonitor);
+    screenManager = new ScreenManager(watch);
 
     batteryMonitor->begin();
     bluetooth.begin();
     physicalActivity->begin();
     bluetooth.addService(batteryService);
     batteryService->begin();
+    physicalActivity->printEventsForDay(1742947200);
 }
 
 void loop() {
+    screenManager ->isPressed() || !screenManager->screenTimeout() ? screenManager->turnOn() : screenManager->turnOff();
     bluetooth.loop();
 
-    //physicalActivity->updateActivity();
+    physicalActivity->updateActivity();
+    screenManager->showStepCount(physicalActivity->getStepCount());
 
     unsigned long currentMillis = millis();
     if (currentMillis - lastBatteryCheck >= batteryCheckInterval) {
         lastBatteryCheck = currentMillis;
 
-        if (batteryMonitor->isBatteryLowLevel() ) {
+        if (batteryMonitor->isBatteryLowLevel()) {
             Serial.println("Battery low level");
             batteryService->notifyBatteryLowLevel();
         }
 
-        tft->setTextColor(random(0xFFFF), TFT_BLACK);
-        tft->setCursor(45, 118);
-        tft->print("Porcentagem da Bateria:");
-        tft->print(batteryMonitor->getBatteryPercentage());
+        if (screenManager->isOn()) {
+            // screenManager->displayActivitySummary(physicalActivity->getActivitySummary());
+            screenManager->updateBattery(batteryMonitor->getBatteryPercentage());
+        }
     }
 }

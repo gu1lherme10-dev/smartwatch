@@ -1,5 +1,7 @@
 #include <Arduino.h>
+#include <time.h> // Para usar struct tm e mktime
 #include "utils.h"
+#include "config.h"
 // Function to log a String message
 #define MAX_SAMPLES 10
 
@@ -7,6 +9,22 @@ static int j = 0;
 static float sampleMedia = 0.0;
 static float *movingAverageSamples = nullptr;
 static int maxSamples = 0;
+
+
+uint32_t convertToUnixTimestamp(const RTC_Date &date) {
+    struct tm timeinfo;
+
+    // Preenche a estrutura tm com os valores de RTC_Date
+    timeinfo.tm_year = date.year - 1900; // Ano desde 1900
+    timeinfo.tm_mon = date.month - 1;    // Mês (0-11)
+    timeinfo.tm_mday = date.day;         // Dia do mês
+    timeinfo.tm_hour = date.hour;        // Hora
+    timeinfo.tm_min = date.minute;       // Minuto
+    timeinfo.tm_sec = date.second;       // Segundo
+
+    // Converte para Unix Timestamp (segundos desde 1º de janeiro de 1970)
+    return mktime(&timeinfo);
+}
 
 void logMessage(String message, bool endline)
 {

@@ -14,26 +14,28 @@ class PhysicalActivity {
 public:
     explicit PhysicalActivity(TTGOClass *watch);
     void begin();
-    bool checkStep();
     uint32_t getStepCount();
-    uint32_t getStepCountMock();
-    void readStoredActivity();
     void updateActivity();
-    void IRAM_ATTR mockInterrupt();
     uint32_t startTime;
     void storeActivityEvent(uint32_t steps, uint8_t activity);
     static void IRAM_ATTR onInterrupt();
+    struct ActivitySummary {
+        float idleTime;
+        float walkingTime;
+        float runningTime;
+    };
+    String getCurrentDateKey();
+    void printEventsForDay(uint32_t dayTimestamp);
+    uint8_t detectActivity(uint32_t stepDelta);
 
 private:
     TTGOClass *watch;
     BMA *sensor;
     uint32_t lastStepCount;
     uint32_t lastUpdateTime;
-    uint8_t currentActivity;
+    int8_t currentActivity;
     std::vector<ActivityEvent> activityResume;
     static volatile bool irq;
-    String getCurrentDateKey();
-
 };
 
 #endif // PHYSICAL_ACTIVITY_H
