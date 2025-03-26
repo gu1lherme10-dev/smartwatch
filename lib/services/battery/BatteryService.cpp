@@ -7,7 +7,9 @@ BatteryBLEService::BatteryBLEService(BatteryMonitor* batteryMonitor)
       batteryService("0x180F"),
       readBatteryLevel("0x2A19", BLERead),
       readBatteryStatus("0x2BED", BLERead),
-      notifyLowLevelBattery("0x2BE9", BLENotify) {}
+      notifyLowLevelBattery("0x2BE9", BLENotify) {
+    instance = this;
+    }
 
 void BatteryBLEService::begin() {
     batteryService.addCharacteristic(readBatteryLevel);

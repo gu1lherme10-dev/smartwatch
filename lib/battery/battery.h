@@ -18,25 +18,18 @@ public:
     // Construtor
     BatteryMonitor(TTGOClass *watch);
 
-    // Inicia o monitoramento da bateria
     void begin();
 
-    // Calcula a voltagem da bateria
-    void calculateBatteryVoltage();
-
-    // Retorna a porcentagem de carga da bateria
     int getBatteryPercentage();
 
-    // Retorna o status da bateria (se está baixa, média, boa, etc)
     int getBatteryStatus();
 
-    // Verifica se a bateria está carregando
-    bool isChargingBattery();
+    bool isBatteryCharging();
 
-    // Função para monitorar a bateria no loop
+    bool isBatteryConnect();
+
     void loop();
 
-    // Verifica se a bateria está com nível baixo (abaixo de 20%)
     bool isBatteryLowLevel();
 };
 
