@@ -3,6 +3,7 @@
 #include "battery/BatteryService.h"
 #include "physicalActivity.h"
 #include "screenManager.h"
+#include "physicalActivity/physicalActivityService.h"
 
 Bluetooth bluetooth;
 
@@ -14,7 +15,8 @@ BatteryMonitor *batteryMonitor;
 PhysicalActivity *physicalActivity;
 BatteryBLEService *batteryService;
 TFT_eSPI *tft;
-ScreenManager *screenManager; 
+ScreenManager *screenManager;
+PhysicalActivityService *physicalActivityService;
 
 void setup() {
     Serial.begin(115200);
@@ -27,14 +29,14 @@ void setup() {
     batteryMonitor = new BatteryMonitor(watch);
     physicalActivity = new PhysicalActivity(watch);
     batteryService = new BatteryBLEService(batteryMonitor);
+    physicalActivityService = new PhysicalActivityService();
     screenManager = new ScreenManager(watch);
 
     batteryMonitor->begin();
     bluetooth.begin();
     physicalActivity->begin();
-    bluetooth.addService(batteryService);
+    physicalActivityService->begin();
     batteryService->begin();
-    physicalActivity->printEventsForDay(1742947200);
 }
 
 void loop() {
@@ -50,7 +52,7 @@ void loop() {
 
         if (batteryMonitor->isBatteryLowLevel()) {
             Serial.println("Battery low level");
-            batteryService->notifyBatteryLowLevel();
+            //batteryService->notifyBatteryLowLevel();
         }
 
         if (screenManager->isOn()) {

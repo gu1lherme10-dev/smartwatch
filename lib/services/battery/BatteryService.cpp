@@ -16,6 +16,7 @@ void BatteryBLEService::begin() {
     batteryService.addCharacteristic(readBatteryStatus);
     batteryService.addCharacteristic(notifyLowLevelBattery);
     BLE.addService(batteryService);
+    BLE.setAdvertisedService(batteryService);
 
     readBatteryLevel.setEventHandler(BLERead, updateBatteryLevelCharacteristicStatic);
     readBatteryStatus.setEventHandler(BLERead, updateBatteryStatusCharacteristicStatic);
