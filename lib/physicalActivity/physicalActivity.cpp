@@ -52,22 +52,28 @@ uint32_t PhysicalActivity::getStepCount() {
 
 void PhysicalActivity::updateActivity() {
     uint32_t now = millis();
-    if (now - lastUpdateTime < 60000) return;
+    if (now - lastUpdateTime < 60000) return;  // Atualiza a cada 1 minuto
+
     uint32_t currentSteps = getStepCount();
     uint32_t stepDelta = currentSteps - lastStepCount;
     uint8_t detectedActivity = detectActivity(stepDelta);
+
     if (currentActivity == -1) {
         Serial.println("Iniciando monitoramento. Atividade detectada: " + String(detectedActivity));
         currentActivity = detectedActivity;
     } else if (detectedActivity != currentActivity) {
+        storeActivityEvent(lastStepCount, currentActivity);  
+
         Serial.println("Mudança de atividade: " + String(currentActivity) + " -> " + String(detectedActivity));
-        storeActivityEvent(currentSteps, currentActivity);
+
+        // Atualizar a atividade atual
         currentActivity = detectedActivity;
     }
 
     lastStepCount = currentSteps;
     lastUpdateTime = now;
 }
+
 
 uint8_t PhysicalActivity::detectActivity(uint32_t stepDelta) {
     if (stepDelta >= STEP_THRESHOLD_RUN) return 2; // Correndo
@@ -93,7 +99,8 @@ void PhysicalActivity::storeActivityEvent(uint32_t steps, uint8_t activity) {
 
     ActivityEvent event;
     event.timestamp = timestamp;
-    event.data = (steps << 2) | activity;  
+    event.data = (activity << 30) | steps;
+    // 30 bits para passos e 2 bits para atividade
 
     Serial.print("Passos: ");
     Serial.println(steps);
@@ -115,10 +122,13 @@ void PhysicalActivity::storeActivityEvent(uint32_t steps, uint8_t activity) {
     preferences.end();
 }
 
-void PhysicalActivity::printEventsForDay(uint32_t dayTimestamp) {
+void PhysicalActivity::printEventsForDay() {
     preferences.begin("activity", true);
 
     Serial.println("========== Eventos do Dia ==========");
+
+    RTC_Date date = watch->rtc->getDateTime();
+    uint32_t dayTimestamp = convertToUnixTimestamp(date); 
 
     nvs_iterator_t it = nvs_entry_find("nvs", "activity", NVS_TYPE_BLOB);
     while (it != NULL) {

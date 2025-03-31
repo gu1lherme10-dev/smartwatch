@@ -25,7 +25,7 @@ public:
         float runningTime;
     };
     String getCurrentDateKey();
-    void printEventsForDay(uint32_t dayTimestamp);
+    void printEventsForDay();
     uint8_t detectActivity(uint32_t stepDelta);
 
 private:

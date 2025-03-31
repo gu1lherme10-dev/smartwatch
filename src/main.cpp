@@ -37,6 +37,8 @@ void setup() {
     physicalActivity->begin();
     physicalActivityService->begin();
     batteryService->begin();
+
+    physicalActivity->printEventsForDay(); // Exemplo de timestamp
 }
 
 void loop() {
