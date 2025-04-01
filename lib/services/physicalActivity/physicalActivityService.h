@@ -3,16 +3,12 @@
 
 #include "BLEServiceBase.h"
 #include "physicalActivity.h"
+#include "activityEvent.h"
 
 class PhysicalActivityService : public BLEServiceBase {
 public:
-    PhysicalActivityService();
-    
-    struct ActivityEvent {
-        uint32_t timestamp;
-        uint32_t activity_steps;
-    };
-    
+    PhysicalActivityService(PhysicalActivity* physicalActivity);
+        
     void begin() override;
     void loop() override;
     
@@ -20,7 +16,6 @@ public:
     static bool appIsActive;
     
     void notifyBufferOverflow();
-    std::vector<ActivityEvent> generateActivityEvents(uint32_t startTimestamp, uint32_t numEvents);
     std::vector<uint8_t> serializeEvents(const std::vector<ActivityEvent>& events);
     void sendActivityEventsBLE(BLEDevice central, BLECharacteristic characteristic);
     static void sendActivitySummary(BLEDevice central, BLECharacteristic characteristic);
@@ -29,6 +24,7 @@ public:
     static void updateInactiveStatusStatic(BLEDevice central, BLECharacteristic characteristic);
 
 private:
+    PhysicalActivity *physicalActivity;
     BLEService physicalActivityService;
     BLECharacteristic readActivitySummary;
     BLEUnsignedCharCharacteristic bufferOverflowNotify;

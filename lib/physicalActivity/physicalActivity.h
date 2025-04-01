@@ -4,11 +4,7 @@
 #include <vector>
 #include <config.h>
 #include <Preferences.h>
-
-struct ActivityEvent {
-    uint32_t timestamp;
-    uint32_t data;    
-};
+#include "activityEvent.h"
 
 class PhysicalActivity {
 public:
@@ -25,8 +21,11 @@ public:
         float runningTime;
     };
     String getCurrentDateKey();
-    void printEventsForDay();
+    std::vector<ActivityEvent> getEventsForDay();
     uint8_t detectActivity(uint32_t stepDelta);
+    uint32_t getDayTimestamp(RTC_Date date);
+    void deleteAllEvents();
+    void resetStepCounter();
 
 private:
     TTGOClass *watch;
@@ -36,6 +35,7 @@ private:
     int8_t currentActivity;
     std::vector<ActivityEvent> activityResume;
     static volatile bool irq;
+    uint32_t sessionSteps;
 };
 
 #endif // PHYSICAL_ACTIVITY_H

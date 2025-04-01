@@ -1,14 +1,15 @@
 #include "physicalActivityService.h"
 
-#define MAX_PACKET_SIZE 80                               // Tamanho fixo do pacote BLE
+#define MAX_PACKET_SIZE 240                               // Tamanho fixo do pacote BLE
 #define EVENT_SIZE sizeof(ActivityEvent)                 // Cada evento ocupa 8 bytes
 #define EVENTS_PER_PACKET (MAX_PACKET_SIZE / EVENT_SIZE) // 30 eventos por pacote
 
 PhysicalActivityService *PhysicalActivityService::instance = nullptr;
 
 // Construtor
-PhysicalActivityService::PhysicalActivityService()
-    : physicalActivityService("0x183E"),
+PhysicalActivityService::PhysicalActivityService(PhysicalActivity* physicalActivity)
+    : physicalActivity(physicalActivity),
+      physicalActivityService("0x183E"),
       readActivitySummary("0x2B3D", BLERead, MAX_PACKET_SIZE, true),
       bufferOverflowNotify("46acd1c8-4caf-4330-8205-0c0743c8bfd4", BLENotify),
       notifyNewActivity("0x2B3C", BLENotify, sizeof(ActivityEvent)),
@@ -28,10 +29,8 @@ void PhysicalActivityService::begin()
     BLE.setAdvertisedService(physicalActivityService);
 
     bufferOverflowNotify.setValue(0);
-    // Define um valor inicial para readActivitySummary
-    std::vector<ActivityEvent> initialEvents = generateActivityEvents(1742947200, 1); // Gera 1 evento inicial
-    std::vector<uint8_t> buffer = serializeEvents(initialEvents);
-    readActivitySummary.setValue(buffer.data(), buffer.size());
+    uint8_t emptyBuffer[MAX_PACKET_SIZE] = {0};
+    readActivitySummary.setValue(emptyBuffer, MAX_PACKET_SIZE);    
     readActivitySummary.setEventHandler(BLERead, sendActivitySummary);
 }
 
@@ -46,69 +45,6 @@ void PhysicalActivityService::notifyBufferOverflow()
     bufferOverflowNotify.writeValue(1);
     Serial.println("Buffer cheio! Notificando app...");
 }
-
-std::vector<PhysicalActivityService::ActivityEvent> PhysicalActivityService::generateActivityEvents(uint32_t startTimestamp, uint32_t numEvents)
-{
-    std::vector<ActivityEvent> events;
-    uint32_t currentTimestamp = startTimestamp;
-
-    for (uint32_t i = 0; i < numEvents; i++)
-    {
-        ActivityEvent event;
-        event.timestamp = currentTimestamp;
-
-        uint32_t activityType = 0;  // 0 = Inatividade, 1 = Caminhada, 2 = Corrida
-        uint32_t numSteps = 0;
-
-        // Gerar número de passos com base no tipo de atividade
-        if (i % 3 == 0)  // Inatividade
-        {
-            activityType = 0;  // Tipo de atividade: Inatividade
-            numSteps = 0;      // Passos = 0
-        }
-        else if (i % 3 == 1)  // Caminhada
-        {
-            activityType = 1;  // Tipo de atividade: Caminhada
-            numSteps = 1000 + rand() % 2000; // Passos realistas para caminhada
-        }
-        else  // Corrida
-        {
-            activityType = 2;  // Tipo de atividade: Corrida
-            numSteps = 3000 + rand() % 5000; // Passos realistas para corrida
-        }
-
-        // Combina o tipo de atividade (2 bits) e os passos (30 bits) no mesmo valor
-        uint32_t activityData = (activityType << 30) | (numSteps & 0x3FFFFFFF); // 0x3FFFFFFF mascara os 30 bits de passos
-
-        event.activity_steps = activityData; // Atribuindo o valor combinado
-
-        // Logando os detalhes de cada evento gerado
-        Serial.print("Evento gerado: ");
-        Serial.print("Timestamp: ");
-        Serial.print(event.timestamp);
-        Serial.print(" | Tipo de Atividade: ");
-        switch (activityType)
-        {
-            case 0: Serial.print("Inatividade"); break;
-            case 1: Serial.print("Caminhada"); break;
-            case 2: Serial.print("Corrida"); break;
-        }
-        Serial.print(" | Passos: ");
-        Serial.print(numSteps);
-        Serial.print(" | activity_steps (32 bits): ");
-        Serial.println(activityData, HEX); // Exibe o valor em hexadecimal
-
-        // Armazenar o evento gerado
-        events.push_back(event);
-
-        // Incrementar o timestamp (aqui podemos manter o intervalo de 5 minutos)
-        currentTimestamp += 300000;  // Incrementa 5 minutos (300000 ms)
-    }
-
-    return events;
-}
-
-
 
 // Serializa eventos em um buffer de bytes
 std::vector<uint8_t> PhysicalActivityService::serializeEvents(const std::vector<ActivityEvent> &events)
@@ -128,7 +64,7 @@ void PhysicalActivityService::sendActivityEventsBLE(BLEDevice central, BLECharac
 {
     Serial.println("Iniciando envio de eventos via BLE...");
 
-    const std::vector<ActivityEvent> &events = generateActivityEvents(1742947200, 10);
+    const std::vector<ActivityEvent> &events = physicalActivity->getEventsForDay();
     size_t totalEvents = events.size();
     Serial.print("Total de eventos gerados: ");
     Serial.println(totalEvents);
@@ -163,28 +99,6 @@ void PhysicalActivityService::sendActivityEventsBLE(BLEDevice central, BLECharac
 
     Serial.println("Todos os eventos foram enviados!");
 }
-
-// void PhysicalActivityService::sendActivityEventsBLE(BLEDevice central, BLECharacteristic characteristic) {
-//     Serial.println("📡 sendActivitySummary chamada! Enviando 1 evento de teste...");
-
-//     ActivityEvent event;
-//     event.timestamp = 1742947200;  // Timestamp fixo para debug
-//     event.activity_steps = 1234;   // Número fixo de passos para testar
-
-//     std::vector<uint8_t> buffer(sizeof(ActivityEvent));
-//     memcpy(buffer.data(), &event, sizeof(ActivityEvent));
-
-//     Serial.print("🔹 Timestamp: ");
-//     Serial.print(event.timestamp);
-//     Serial.print(" | Passos: ");
-//     Serial.println(event.activity_steps);
-
-//     Serial.print("🔹 Buffer size: ");
-//     Serial.println(buffer.size());
-
-//     characteristic.writeValue(buffer.data(), buffer.size());
-//     Serial.println("🚀 Evento enviado via BLE!");
-// }
 
 // Envia resumo da atividade
 void PhysicalActivityService::sendActivitySummary(BLEDevice central, BLECharacteristic characteristic)
@@ -230,5 +144,5 @@ void PhysicalActivityService::notifyNewActivityEvent(ActivityEvent event)
     Serial.print("Notificando nova atividade - Timestamp: ");
     Serial.print(event.timestamp);
     Serial.print(" | Passos: ");
-    Serial.println(event.activity_steps);
+    Serial.println(event.data);
 }

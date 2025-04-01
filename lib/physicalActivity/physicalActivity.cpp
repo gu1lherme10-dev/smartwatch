@@ -36,8 +36,10 @@ void PhysicalActivity::begin() {
     attachInterrupt(BMA423_INT1, onInterrupt, RISING);
 
     sensor->enableFeature(BMA423_STEP_CNTR, true);
+}
+
+void PhysicalActivity::resetStepCounter() {
     sensor->resetStepCounter();
-    sensor->enableStepCountInterrupt();
 }
 
 // Handler de interrupção
@@ -52,26 +54,34 @@ uint32_t PhysicalActivity::getStepCount() {
 
 void PhysicalActivity::updateActivity() {
     uint32_t now = millis();
-    if (now - lastUpdateTime < 60000) return;  // Atualiza a cada 1 minuto
+    if (now - lastUpdateTime < 60000) return;  // Atualiza apenas a cada 1 minuto
 
     uint32_t currentSteps = getStepCount();
-    uint32_t stepDelta = currentSteps - lastStepCount;
+    uint32_t stepDelta = currentSteps - lastStepCount;  // Calcula passos novos
+    lastStepCount = currentSteps;  // Atualiza a contagem de passos para a próxima verificação
+
     uint8_t detectedActivity = detectActivity(stepDelta);
 
+    // Primeira vez que a função roda (inicialização)
     if (currentActivity == -1) {
         Serial.println("Iniciando monitoramento. Atividade detectada: " + String(detectedActivity));
         currentActivity = detectedActivity;
-    } else if (detectedActivity != currentActivity) {
-        storeActivityEvent(lastStepCount, currentActivity);  
-
+        sessionSteps = stepDelta;  // Inicia contagem da nova atividade
+    }
+    else if (detectedActivity != currentActivity) {
+        storeActivityEvent(sessionSteps, currentActivity);
         Serial.println("Mudança de atividade: " + String(currentActivity) + " -> " + String(detectedActivity));
 
-        // Atualizar a atividade atual
+        // Reinicia sessão para a nova atividade
+        sessionSteps = stepDelta;
         currentActivity = detectedActivity;
     }
+    else {
+        // Continua acumulando passos na mesma atividade
+        sessionSteps += stepDelta;
+    }
 
-    lastStepCount = currentSteps;
-    lastUpdateTime = now;
+    lastUpdateTime = now;  // Atualiza tempo da última verificação
 }
 
 
@@ -81,12 +91,17 @@ uint8_t PhysicalActivity::detectActivity(uint32_t stepDelta) {
     return 0;
 }
 
+uint32_t PhysicalActivity::getDayTimestamp(RTC_Date date) {
+    struct tm t;
+    t.tm_year = date.year - 1900;
+    t.tm_mon = date.month - 1;
+    t.tm_mday = date.day;
+    t.tm_hour = 0;
+    t.tm_min = 0;
+    t.tm_sec = 0;
+    t.tm_isdst = -1;
 
-String PhysicalActivity::getCurrentDateKey() {
-    RTC_Date date = watch->rtc->getDateTime();
-
-    String dateKey = String(date.year) + (date.month < 10 ? "0" : "") + String(date.month) + (date.day < 10 ? "0" : "") + String(date.day);
-    return dateKey;
+    return mktime(&t);
 }
 
 void PhysicalActivity::storeActivityEvent(uint32_t steps, uint8_t activity) {
@@ -118,56 +133,104 @@ void PhysicalActivity::storeActivityEvent(uint32_t steps, uint8_t activity) {
 
     String timestampKey = String(timestamp);
     bool success = preferences.putBytes(timestampKey.c_str(), buffer, sizeof(ActivityEvent));
-    
+    Serial.println(success ? "Evento salvo com sucesso!" : "Falha ao salvar evento!");
     preferences.end();
 }
 
-void PhysicalActivity::printEventsForDay() {
-    preferences.begin("activity", true);
+std::vector<ActivityEvent> PhysicalActivity::getEventsForDay() {
+    std::vector<ActivityEvent> events;
 
+    preferences.begin("activity", true);
     Serial.println("========== Eventos do Dia ==========");
 
     RTC_Date date = watch->rtc->getDateTime();
-    uint32_t dayTimestamp = convertToUnixTimestamp(date); 
+    uint32_t dayTimestamp = getDayTimestamp(date);
 
-    nvs_iterator_t it = nvs_entry_find("nvs", "activity", NVS_TYPE_BLOB);
+    // Listando chaves armazenadas no NVS para depuração
+    Serial.println("Chaves armazenadas no NVS:");
+    nvs_iterator_t it = nvs_entry_find(NVS_DEFAULT_PART_NAME, "activity", NVS_TYPE_BLOB);
+    while (it != NULL) {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        Serial.println(info.key);  // Exibir todas as chaves armazenadas
+        it = nvs_entry_next(it);
+    }
+
+    it = nvs_entry_find(NVS_DEFAULT_PART_NAME, "activity", NVS_TYPE_BLOB);
     while (it != NULL) {
         nvs_entry_info_t info;
         nvs_entry_info(it, &info);
         it = nvs_entry_next(it);
 
-        uint32_t timestamp = String(info.key).toInt();
+        uint32_t timestamp = atoi(info.key);
 
-        if (timestamp >= dayTimestamp && timestamp < dayTimestamp + 86400) {
+        if (timestamp >= dayTimestamp && timestamp < dayTimestamp + 86400) {  // Verifica se o evento é do dia atual
             uint8_t buffer[sizeof(ActivityEvent)];
-            size_t dataSize = preferences.getBytes(info.key, buffer, sizeof(ActivityEvent));
 
-            if (dataSize == sizeof(ActivityEvent)) {
-                ActivityEvent event;
-                memcpy(&event, buffer, sizeof(ActivityEvent));
-
-                uint32_t steps = event.data >> 2;
-                uint8_t activity = event.data & 0b11;
-
-                Serial.print("Timestamp: ");
-                Serial.println(event.timestamp);
-
-                Serial.print("Passos: ");
-                Serial.println(steps);
-
-                Serial.print("Atividade: ");
-                if (activity == 0) {
-                    Serial.println("Parado");
-                } else if (activity == 1) {
-                    Serial.println("Caminhando");
-                } else if (activity == 2) {
-                    Serial.println("Correndo");
-                }
-
-                Serial.println("-----------------------------");
+            // Verificar se a chave realmente existe
+            if (!preferences.isKey(info.key)) {
+                Serial.println("Chave não encontrada: " + String(info.key));
+                continue;
             }
+
+            size_t dataSize = preferences.getBytes(info.key, buffer, sizeof(ActivityEvent));
+            if (dataSize == 0) {
+                Serial.println("Falha ao ler dados da chave: " + String(info.key));
+                continue;
+            }
+
+            ActivityEvent event;
+            memcpy(&event, buffer, sizeof(ActivityEvent));
+
+            uint8_t activity = event.data >> 30;  // Extrai os 2 bits mais significativos para a atividade
+            uint32_t steps = event.data & 0x3FFFFFFF;  // Extrai os 30 bits menos significativos para os passos
+            
+            Serial.println("-----------------------------");
+            Serial.print("Timestamp: ");
+            Serial.println(event.timestamp);
+            Serial.print("Passos: ");
+            Serial.println(steps);
+            Serial.print("Atividade: ");
+            if (activity == 0) {
+                Serial.println("Parado");
+            } else if (activity == 1) {
+                Serial.println("Caminhando");
+            } else if (activity == 2) {
+                Serial.println("Correndo");
+            }
+
+            // Adiciona o evento ao vetor
+            events.push_back(event);
         }
     }
 
     preferences.end();
+    return events;  // Retorna o vetor de eventos
+}
+
+
+void PhysicalActivity::deleteAllEvents() {
+    Serial.println("========== Deletando Todos os Eventos ==========");
+
+    preferences.begin("activity", false);
+    
+    // Listar todas as chaves antes de deletar (para depuração)
+    nvs_iterator_t it = nvs_entry_find(NVS_DEFAULT_PART_NAME, "activity", NVS_TYPE_BLOB);
+    
+    if (it == NULL) {
+        Serial.println("Nenhum evento encontrado para deletar!");
+        preferences.end();
+        return;
+    }
+
+    while (it != NULL) {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        Serial.println("Deletando chave: " + String(info.key));  // Exibir chave antes de apagar
+        preferences.remove(info.key);  // Apaga a chave do NVS
+        it = nvs_entry_next(it);
+    }
+
+    preferences.end();
+    Serial.println("Todos os eventos foram deletados!");
 }

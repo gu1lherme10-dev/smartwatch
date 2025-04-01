@@ -29,7 +29,7 @@ void setup() {
     batteryMonitor = new BatteryMonitor(watch);
     physicalActivity = new PhysicalActivity(watch);
     batteryService = new BatteryBLEService(batteryMonitor);
-    physicalActivityService = new PhysicalActivityService();
+    physicalActivityService = new PhysicalActivityService(physicalActivity);
     screenManager = new ScreenManager(watch);
 
     batteryMonitor->begin();
@@ -38,7 +38,7 @@ void setup() {
     physicalActivityService->begin();
     batteryService->begin();
 
-    physicalActivity->printEventsForDay(); // Exemplo de timestamp
+    physicalActivity->getEventsForDay(); // Example of timestamp retrieval
 }
 
 void loop() {
@@ -60,6 +60,30 @@ void loop() {
         if (screenManager->isOn()) {
             // screenManager->displayActivitySummary(physicalActivity->getActivitySummary());
             screenManager->updateBattery(batteryMonitor->getBatteryPercentage());
+
+        }
+    }
+
+    if (Serial.available()) {
+        String command = Serial.readStringUntil('\n');
+        command.trim();
+
+        if (command == "show") {
+            Serial.println("🔍 Exibindo eventos salvos...");
+            physicalActivity->getEventsForDay();
+        } else if (command == "delete") {
+            Serial.println("🗑️ Apagando todos os eventos...");
+            physicalActivity->deleteAllEvents();
+
+        } else if (command == "delete_steps") {
+                Serial.println("🗑️ Apagando todos os eventos...");
+                physicalActivity->resetStepCounter();
+        } else {
+            Serial.println("❌ Comando inválido! Use:");
+            Serial.println(" - show_events → Mostra os eventos salvos");
+            Serial.println(" - delete_events → Apaga todos os eventos");
+            Serial.println(" - delete_steps → Apaga todos os passos");
+
         }
     }
 }
