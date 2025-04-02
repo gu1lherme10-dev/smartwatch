@@ -13,7 +13,7 @@ PhysicalActivityService::PhysicalActivityService(PhysicalActivity* physicalActiv
       readActivitySummary("0x2B3D", BLERead, MAX_PACKET_SIZE, true),
       bufferOverflowNotify("46acd1c8-4caf-4330-8205-0c0743c8bfd4", BLENotify),
       notifyNewActivity("0x2B3C", BLENotify, sizeof(ActivityEvent)),
-      inactiveStatus("d2d818ac-448f-4891-97ac-b9715aa44a1d", BLEWrite)
+      inactiveStatus("d2d818ac-448f-4891-97ac-b9715aa44a1d", BLEWrite | BLERead)
 {
     instance = this;
 }
@@ -30,6 +30,8 @@ void PhysicalActivityService::begin()
 
     bufferOverflowNotify.setValue(0);
     uint8_t emptyBuffer[MAX_PACKET_SIZE] = {0};
+    inactiveStatus.setValue(0);
+    inactiveStatus.setEventHandler(BLEWritten, updateInactiveStatusStatic);
     readActivitySummary.setValue(emptyBuffer, MAX_PACKET_SIZE);    
     readActivitySummary.setEventHandler(BLERead, sendActivitySummary);
 }
@@ -98,6 +100,8 @@ void PhysicalActivityService::sendActivityEventsBLE(BLEDevice central, BLECharac
     }
 
     Serial.println("Todos os eventos foram enviados!");
+    Serial.println("Limpeza do buffer de eventos...");
+    //physicalActivity->deleteAllEvents();
 }
 
 // Envia resumo da atividade
@@ -127,6 +131,7 @@ void PhysicalActivityService::updateInactiveStatus(BLEDevice central, BLECharact
 // Método estático para atualizar status de atividade
 void PhysicalActivityService::updateInactiveStatusStatic(BLEDevice central, BLECharacteristic characteristic)
 {
+    Serial.println("updateInactiveStatusStatic chamada!");
     if (instance != nullptr)
     {
         instance->updateInactiveStatus(central, characteristic);
@@ -141,8 +146,34 @@ void PhysicalActivityService::notifyNewActivityEvent(ActivityEvent event)
 
     notifyNewActivity.writeValue(buffer.data(), buffer.size());
 
+    // Log detalhado do evento
     Serial.print("Notificando nova atividade - Timestamp: ");
     Serial.print(event.timestamp);
     Serial.print(" | Passos: ");
     Serial.println(event.data);
+
+    // Log do buffer em formato binário
+    Serial.println("Dados enviados (binário):");
+    for (size_t i = 0; i < buffer.size(); i++) {
+        Serial.print("Byte ");
+        Serial.print(i);
+        Serial.print(": ");
+        Serial.println(buffer[i], BIN); // Imprime o byte em binário
+    }
+
+    // Log do buffer em formato hexadecimal (opcional)
+    Serial.println("Dados enviados (hexadecimal):");
+    for (size_t i = 0; i < buffer.size(); i++) {
+        Serial.print("0x");
+        if (buffer[i] < 0x10) Serial.print("0"); // Adiciona zero à esquerda para bytes menores que 0x10
+        Serial.print(buffer[i], HEX);
+        Serial.print(" ");
+    }
+    Serial.println();
+}
+
+std::function<void(ActivityEvent)> PhysicalActivityService::notifyNewActivityCallback() {
+    return [this](ActivityEvent event) {
+        notifyNewActivityEvent(event);
+    };
 }

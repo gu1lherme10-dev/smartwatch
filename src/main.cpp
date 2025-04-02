@@ -4,6 +4,7 @@
 #include "physicalActivity.h"
 #include "screenManager.h"
 #include "physicalActivity/physicalActivityService.h"
+#include "fallDetection/fallDetectionService.h"
 
 Bluetooth bluetooth;
 
@@ -17,8 +18,10 @@ BatteryBLEService *batteryService;
 TFT_eSPI *tft;
 ScreenManager *screenManager;
 PhysicalActivityService *physicalActivityService;
+FallDetectionService *fallDetectionService;
 
-void setup() {
+void setup()
+{
     Serial.begin(115200);
 
     watch = TTGOClass::getWatch();
@@ -29,61 +32,79 @@ void setup() {
     batteryMonitor = new BatteryMonitor(watch);
     physicalActivity = new PhysicalActivity(watch);
     batteryService = new BatteryBLEService(batteryMonitor);
+    fallDetectionService = new FallDetectionService();
     physicalActivityService = new PhysicalActivityService(physicalActivity);
     screenManager = new ScreenManager(watch);
+
+    physicalActivity->setCallback(physicalActivityService->notifyNewActivityCallback());
 
     batteryMonitor->begin();
     bluetooth.begin();
     physicalActivity->begin();
     physicalActivityService->begin();
     batteryService->begin();
+    fallDetectionService->begin();
 
-    physicalActivity->getEventsForDay(); // Example of timestamp retrieval
+    physicalActivity->getEventsForDay();
 }
 
-void loop() {
-    screenManager ->isPressed() || !screenManager->screenTimeout() ? screenManager->turnOn() : screenManager->turnOff();
+void loop()
+{
+    screenManager->isPressed() || !screenManager->screenTimeout() ? screenManager->turnOn() : screenManager->turnOff();
     bluetooth.loop();
 
     physicalActivity->updateActivity();
     screenManager->showStepCount(physicalActivity->getStepCount());
 
     unsigned long currentMillis = millis();
-    if (currentMillis - lastBatteryCheck >= batteryCheckInterval) {
+    if (currentMillis - lastBatteryCheck >= batteryCheckInterval)
+    {
         lastBatteryCheck = currentMillis;
 
-        if (batteryMonitor->isBatteryLowLevel()) {
+        if (batteryMonitor->isBatteryLowLevel())
+        {
             Serial.println("Battery low level");
-            //batteryService->notifyBatteryLowLevel();
+            batteryService->notifyBatteryLowLevel();
         }
 
-        if (screenManager->isOn()) {
+        if (screenManager->isOn())
+        {
             // screenManager->displayActivitySummary(physicalActivity->getActivitySummary());
             screenManager->updateBattery(batteryMonitor->getBatteryPercentage());
-
         }
     }
 
-    if (Serial.available()) {
+    if (Serial.available())
+    {
         String command = Serial.readStringUntil('\n');
         command.trim();
 
-        if (command == "show") {
-            Serial.println("🔍 Exibindo eventos salvos...");
+        if (command == "show")
+        {
+            Serial.println("Exibindo eventos salvos...");
             physicalActivity->getEventsForDay();
-        } else if (command == "delete") {
-            Serial.println("🗑️ Apagando todos os eventos...");
+        }
+        else if (command == "delete")
+        {
+            Serial.println("Apagando todos os eventos...");
             physicalActivity->deleteAllEvents();
-
-        } else if (command == "delete_steps") {
-                Serial.println("🗑️ Apagando todos os eventos...");
-                physicalActivity->resetStepCounter();
-        } else {
-            Serial.println("❌ Comando inválido! Use:");
-            Serial.println(" - show_events → Mostra os eventos salvos");
-            Serial.println(" - delete_events → Apaga todos os eventos");
+        }
+        else if (command == "delete_steps")
+        {
+            Serial.println("Apagando todos os steps...");
+            physicalActivity->resetStepCounter();
+        }
+        else if (command == "fall")
+        {
+            Serial.println("Notificando Queda");
+            fallDetectionService->notifyFall();
+        }
+        else
+        {
+            Serial.println("Comando inválido! Use:");
+            Serial.println(" - show → Mostra os eventos salvos");
+            Serial.println(" - delete → Apaga todos os eventos");
             Serial.println(" - delete_steps → Apaga todos os passos");
-
         }
     }
 }

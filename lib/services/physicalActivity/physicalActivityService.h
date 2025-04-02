@@ -14,6 +14,8 @@ public:
     
     static PhysicalActivityService* instance;
     static bool appIsActive;
+
+    std::function<void(ActivityEvent)> notifyNewActivityCallback();
     
     void notifyBufferOverflow();
     std::vector<uint8_t> serializeEvents(const std::vector<ActivityEvent>& events);

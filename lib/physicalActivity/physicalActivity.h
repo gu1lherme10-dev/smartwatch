@@ -13,7 +13,7 @@ public:
     uint32_t getStepCount();
     void updateActivity();
     uint32_t startTime;
-    void storeActivityEvent(uint32_t steps, uint8_t activity);
+    void storeActivityEvent(uint32_t steps, uint8_t activity, uint32_t timestamp);
     static void IRAM_ATTR onInterrupt();
     struct ActivitySummary {
         float idleTime;
@@ -26,6 +26,7 @@ public:
     uint32_t getDayTimestamp(RTC_Date date);
     void deleteAllEvents();
     void resetStepCounter();
+    void setCallback(std::function<void(ActivityEvent)> callback);
 
 private:
     TTGOClass *watch;
@@ -36,6 +37,7 @@ private:
     std::vector<ActivityEvent> activityResume;
     static volatile bool irq;
     uint32_t sessionSteps;
+    std::function<void(ActivityEvent)> notifyNewActivityCallback;
 };
 
 #endif // PHYSICAL_ACTIVITY_H
